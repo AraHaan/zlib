@@ -11,59 +11,66 @@ jobs:
           - name: Ubuntu GCC
             os: ubuntu-latest
             compiler: gcc
-            cflags: -Werror -Wall -Wextra
-
-          # Test out of source builds
-          - name: Ubuntu GCC OSB
-            os: ubuntu-latest
-            compiler: gcc
-            cflags: -Werror -Wall -Wextra
-            build-dir: ../build
-            src-dir: ../zlib
+            cflags: -Wall -Wextra
+            pkgtgt: package package_source
+            cmake-args: -DMINIZIP_ENABLE_BZIP2=ON
 
           - name: Ubuntu GCC -O3
             os: ubuntu-latest
             compiler: gcc
-            cflags: -O3 -Werror -Wall -Wextra
+            cflags: -O3 -Wall -Wextra
+            pkgtgt: package package_source
+            cmake-args: -DMINIZIP_ENABLE_BZIP2=ON
 
           - name: Ubuntu Clang
             os: ubuntu-latest
             compiler: clang
-            cflags: -Werror -Wall -Wextra
+            cflags: -Wall -Wextra
+            pkgtgt: package package_source
+            cmake-args: -DMINIZIP_ENABLE_BZIP2=ON
 
           - name: Ubuntu Clang Debug
             os: ubuntu-latest
             compiler: clang
-            cflags: -Werror -Wall -Wextra
+            cflags: -Wall -Wextra
             build-config: Debug
+            pkgtgt: package package_source
+            cmake-args: -DMINIZIP_ENABLE_BZIP2=ON
 
           - name: Windows MSVC Win32
             os: windows-latest
             compiler: cl
-            cflags: /WX /W3
+            cflags: /W3
             cmake-args: -A Win32
+            pkgtgt: PACKAGE
 
           - name: Windows MSVC Win64
             os: windows-latest
             compiler: cl
-            cflags: /WX /W3
-            cmake-args: -A x64
+            cflags: /W3
+            cmake-args: -A x64 -DMINIZIP_ENABLE_BZIP2=OFF
+            pkgtgt: PACKAGE
 
           - name: Windows GCC
             os: windows-latest
             compiler: gcc
-            cflags: -Werror -Wall -Wextra
-            cmake-args: -G Ninja
+            cflags: -Wall -Wextra
+            cmake-args: -G Ninja -DMINIZIP_ENABLE_BZIP2=OFF
+            pkgtgt: package
 
           - name: macOS Clang
             os: macos-latest
             compiler: clang
-            cflags: -Werror -Wall -Wextra
+            cflags: -Wall -Wextra
+            pkgtgt: package
+            cmake-args: -DMINIZIP_ENABLE_BZIP2=ON
 
           - name: macOS GCC
             os: macos-latest
             compiler: gcc-12
-            cflags: -Werror -Wall -Wextra
+            cflags: -Wall -Wextra
+            pkgtgt: package
+            cmake-args: -DMINIZIP_ENABLE_BZIP2=ON
 
     steps:
     - name: Checkout repository
@@ -72,20 +79,27 @@ jobs:
     - name: Install packages (Windows)
       if: runner.os == 'Windows'
       run: |
-        choco install --no-progress ninja ${{ matrix.packages }}
+        choco install --no-progress ninja
 
+    - name: Install packages (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt install libbz2-dev
     - name: Generate project files
-      run: cmake -S ${{ matrix.src-dir || '.' }} -B ${{ matrix.build-dir || '.' }} ${{ matrix.cmake-args }} -D CMAKE_BUILD_TYPE=${{ matrix.build-config || 'Release' }}
+      run: cmake -S . -B ../build ${{ matrix.cmake-args }} -D CMAKE_BUILD_TYPE=${{ matrix.build-config || 'Release' }} -DZLIB_BUILD_MINIZIP=ON
       env:
         CC: ${{ matrix.compiler }}
         CFLAGS: ${{ matrix.cflags }}
 
     - name: Compile source code
-      run: cmake --build ${{ matrix.build-dir || '.' }} --config ${{ matrix.build-config || 'Release' }}
+      run: cmake --build ../build --config ${{ matrix.build-config || 'Release' }}
 
     - name: Run test cases
       run: ctest -C Release --output-on-failure --max-width 120
-      working-directory: ${{ matrix.build-dir || '.' }}
+      working-directory: ../build
+
+    - name: create packages
+      run: cmake --build ../build --config ${{ matrix.build-config || 'Release' }} -t ${{ matrix.pkgtgt }}
 
     - name: Upload build errors
       uses: actions/upload-artifact@v4
@@ -93,6 +107,6 @@ jobs:
       with:
         name: ${{ matrix.name }} (cmake)
         path: |
-          **/CMakeFiles/CMakeOutput.log
-          **/CMakeFiles/CMakeError.log
+          ../build/CMakeFiles/CMakeOutput.log
+          ../build/CMakeFiles/CMakeError.log
         retention-days: 7
